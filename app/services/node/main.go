@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DMV-Petri-Dish/crypto/app/services/node/handlers"
+	"github.com/DMV-Petri-Dish/crypto/foundation/logger"
 	"github.com/ardanlabs/conf/v3"
 	"go.uber.org/zap"
 )
@@ -30,7 +32,7 @@ func main() {
 	// Perform the startup and shutdown sequence
 	if err := run(log); err != nil {
 		log.Errorw("startup", "ERROR", err)
-		log.Sync
+		log.Sync()
 		os.Exit(1)
 	}
 }
