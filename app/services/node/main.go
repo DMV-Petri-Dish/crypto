@@ -7,10 +7,20 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/DMV-Petri-Dish/crypto/app/services/node/handlers"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/database"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/state"
+	"github.com/DMV-Petri-Dish/crypto/foundation/events"
+	"github.com/DMV-Petri-Dish/crypto/foundation/logger"
+	"github.com/DMV-Petri-Dish/crypto/foundation/nameservice"
 	"github.com/ardanlabs/conf/v3"
+	"github.com/docker/docker/daemon/events"
+	"github.com/ethereum/go-ethereum/crypto"
 	"go.uber.org/zap"
 )
 
@@ -20,7 +30,7 @@ var build = "develop"
 func main() {
 
 	// Construct the application logger
-	log, err := logger.New("LEDGER")
+	log, err := logger.New("NODE")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -30,7 +40,7 @@ func main() {
 	// Perform the startup and shutdown sequence
 	if err := run(log); err != nil {
 		log.Errorw("startup", "ERROR", err)
-		log.Sync
+		log.Sync()
 		os.Exit(1)
 	}
 }
@@ -52,8 +62,10 @@ func run(log *zap.SugaredLogger) error {
 			PrivateHost     string        `conf:"default:0.0.0.0:9080"`
 		}
 		Node struct {
-			MinerName string `conf:"default:miner1"`
-			DBPath    string `conf:"default:zblock/blocks.db`
+			MinerName      string   `conf:"default:miner1"`
+			DBPath         string   `conf:"default:zblock/blocks.db`
+			SelectStrategy string   `conf:"default:Tip"`
+			OriginPeers    []string `conf:"default:0.0.0.0:9080"`
 		}
 		NameService struct {
 			Folder string `conf:"default:zblock/accounts/"`
@@ -102,26 +114,38 @@ func run(log *zap.SugaredLogger) error {
 	// =================================
 	// Blockchain Support
 
+	// Need to load the private key file for the configured beneficiary so the
+	// account can get credited with fees and tips.
 	path := fmt.Sprintf("%s%s.ecdsa", cfg.NameService.Folder, cfg.Node.MinerName)
 	privateKey, err := crypto.LoadECDSA(path)
 	if err != nil {
 		return fmt.Errorf("unable to load private key for node: %w", err)
 	}
 
-	account := storage.PublicKeyToAccount(privateKey.PublicKey)
-
+	// A peer set is a collection of known nodes in the network so transactions
+	// and blocks can be shared.
 	peerSet := peer.NewPeerSet()
-	for _, host := range cfg.Node.KnownPeers {
+	for _, host := range cfg.Node.OriginPeers {
 		peerSet.Add(peer.New(host))
 	}
 
+	// The blockchain packages accept a function of this signature to allow the
+	// application to log. For now, these raw messages are sent to any websocket
+	// client that is connected into the system through the events package.
+	evts := events.New()
 	ev := func(v string, args ...interface{}) {
+		const websocketPrefix = "viewer:"
+
 		s := fmt.Sprintf(v, args...)
 		log.Infow(s, "traceid", "00000000-0000-0000-0000-000000000000")
+
+		if strings.HasPrefix(s, websocketPrefix) {
+			evts.Send(s)
+		}
 	}
 
 	state, err := state.New(state.Config{
-		MinerAccount:   account,
+		BeneficiaryID:  database.PublicKeyToAccountID(privateKey.PublicKey),
 		Host:           cfg.Web.PrivateHost,
 		DBPath:         cfg.Node.DBPath,
 		SelectStrategy: cfg.Node.SelectStrategy,
