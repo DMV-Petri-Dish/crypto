@@ -19,7 +19,6 @@ import (
 	"github.com/DMV-Petri-Dish/crypto/foundation/logger"
 	"github.com/DMV-Petri-Dish/crypto/foundation/nameservice"
 	"github.com/ardanlabs/conf/v3"
-	"github.com/docker/docker/daemon/events"
 	"github.com/ethereum/go-ethereum/crypto"
 	"go.uber.org/zap"
 )

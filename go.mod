@@ -4,6 +4,8 @@ go 1.17
 
 require (
 	github.com/ardanlabs/conf/v3 v3.1.2
+	github.com/dimfeld/httptreemux v5.0.1+incompatible
+	github.com/dimfeld/httptreemux/v5 v5.4.0
 	github.com/docker/docker v1.4.2-0.20180625184442-8e610b2b55bf
 	github.com/ethereum/go-ethereum v1.10.17
 	go.uber.org/zap v1.21.0
