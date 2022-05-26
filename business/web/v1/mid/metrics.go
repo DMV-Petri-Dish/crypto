@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/DMV-Petri-Dish/crypto/business/web/metrics"
 	"github.com/DMV-Petri-Dish/crypto/foundation/web"
 )
 
