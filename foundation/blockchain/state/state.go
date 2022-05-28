@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/database"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/genesis"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
 )
 
