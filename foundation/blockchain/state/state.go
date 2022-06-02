@@ -7,11 +7,16 @@ import (
 
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/database"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/genesis"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/mempool"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
 )
 
+// EventHandler defines a function that is called when events
+// occut in the processing of persisting blocks.
 type EventHandler func(v string, args ...interface{})
 
+// Worker interface represents the behavior required to be implemented by
+// any package providing support for mining, peer updates, and transaction sharing.
 type Worker interface {
 	Shutdown()
 	Sync()
