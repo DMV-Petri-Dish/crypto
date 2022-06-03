@@ -5,6 +5,8 @@ package v1
 import (
 	"net/http"
 
+	"github.com/DMV-Petri-Dish/crypto/app/services/node/handlers/v1/private"
+	"github.com/DMV-Petri-Dish/crypto/app/services/node/handlers/v1/public"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/state"
 	"github.com/DMV-Petri-Dish/crypto/foundation/events"
 	"github.com/DMV-Petri-Dish/crypto/foundation/nameservice"
@@ -35,6 +37,8 @@ func PublicRoutes(app *web.App, cfg Config) {
 
 	app.Handle(http.MethodGet, version, "/events", pbl.Events)
 	app.Handle(http.MethodGet, version, "/genesis/list", pbl.Genesis)
+
+	app.Handle(http.MethodPost, version, "/tx/submit", pbl.SubmitWalletTransaction)
 
 }
 
