@@ -85,10 +85,46 @@ func (db *Database) Close() {
 	db.storage.Close()
 }
 
-// ForEach returns an iterator to walk through all the blocks
-// starting with block number 1.
-func (db *Database) ForEach() DatabaseIterator {
-	return DatabaseIterator{iterator: db.storage.ForEach()}
+// Reset re-initalizes the database back to the genesis state.
+func (db *Database) Reset() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	db.storage.Reset()
+
+	// Initalizes the database back to the genesis information.
+	db.latestBlock = Block{}
+	db.accounts = make(map[AccountID]Account)
+	for accountStr, balance := range db.genesis.Balances {
+		accountID, err := ToAccountID(accountStr)
+		if err != nil {
+			return err
+		}
+
+		db.accounts[accountID] = newAccount(accountID, balance)
+	}
+
+	return nil
+}
+
+// Remove deletes an account from the database.
+func (db *Database) Remove(accountID AccountID) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	delete(db.accounts, accountID)
+}
+
+// CopyAccounts makes a copy of the current accounts in the database.
+func (db *Database) CopyAccounts() map[AccountID]Account {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	accounts := make(map[AccountID]Account)
+	for accountID, account := range db.accounts {
+		accounts[accountID] = account
+	}
+	return accounts
 }
 
 // HashState returns a hash based on the contents of the accounts and
@@ -198,6 +234,44 @@ func (db *Database) ApplyTransaction(block Block, tx BlockTx) error {
 	}
 
 	return nil
+}
+
+// UpdateLatestBlock provides safe access to update the latest block.
+func (db *Database) UpdateLatestBlock(block Block) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	db.latestBlock = block
+}
+
+// LatestBlock returns the latest block.
+func (db *Database) LatestBlock() Block {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	return db.latestBlock
+}
+
+// Write adds a new block to the chain.
+func (db *Database) Write(block Block) error {
+	return db.storage.Write(NewBlockData(block))
+}
+
+// ForEach returns an iterator to walk through all the blocks
+// starting with block number 1.
+func (db *Database) ForEach() DatabaseIterator {
+	return DatabaseIterator{iterator: db.storage.ForEach()}
+}
+
+// GetBlock searches the blockchain on disk to locate and return the
+// contents of the specified block by number.
+func (db *Database) GetBlock(num uint64) (Block, error) {
+	blockData, err := db.storage.GetBlock(num)
+	if err != nil {
+		return Block{}, err
+	}
+
+	return ToBlock(blockData)
 }
 
 // =============================================================================

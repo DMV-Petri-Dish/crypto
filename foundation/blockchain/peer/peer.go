@@ -21,6 +21,16 @@ func (p Peer) Match(host string) bool {
 	return p.Host == host
 }
 
+// =============================================================================
+
+// PeerStatus represents information about the status
+// of any given peer.
+type PeerStatus struct {
+	LatestBlockHash   string `json:"latest_block_hash"`
+	LatestBlockNumber uint64 `json:"latest_block_number"`
+	KnownPeers        []Peer `json:"known_peers"`
+}
+
 // =======================================
 
 // PeerSet represents the data representation to maintain a set of known peers.

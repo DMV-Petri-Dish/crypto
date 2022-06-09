@@ -52,7 +52,7 @@ func New(root string) (*NameService, error) {
 }
 
 // Lookup returns the name for the specified account.
-func (ns *NameService) Lookupo(accountID database.AccountID) string {
+func (ns *NameService) Lookup(accountID database.AccountID) string {
 	name, exists := ns.accounts[accountID]
 	if !exists {
 		return string(accountID)
