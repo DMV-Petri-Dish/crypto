@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/DMV-Petri-Dish/crypto/app/services/node/handlers/debug/checkgrp"
+	v1 "github.com/DMV-Petri-Dish/crypto/app/services/node/handlers/v1"
 	"github.com/DMV-Petri-Dish/crypto/business/web/v1/mid"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/state"
 	"github.com/DMV-Petri-Dish/crypto/foundation/nameservice"

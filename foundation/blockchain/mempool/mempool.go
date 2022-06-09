@@ -39,6 +39,14 @@ func NewWithStrategy(strategy string) (*Mempool, error) {
 	return &mp, nil
 }
 
+// Count returns the current number of transaction in the pool.
+func (mp *Mempool) Count() int {
+	mp.mu.RLock()
+	defer mp.mu.RUnlock()
+
+	return len(mp.pool)
+}
+
 // Upsert adds or replaces a transaction from the mempool
 func (mp *Mempool) Upsert(tx database.BlockTx) error {
 	mp.mu.Lock()
@@ -82,6 +90,14 @@ func (mp *Mempool) Delete(tx database.BlockTx) error {
 	delete(mp.pool, key)
 
 	return nil
+}
+
+// Truncate clears all the transactions from the pool.
+func (mp *Mempool) Truncate() {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	mp.pool = make(map[string]database.BlockTx)
 }
 
 // PickBest uses the configured sort strategy to return a set of transactions.
