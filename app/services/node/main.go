@@ -13,8 +13,11 @@ import (
 
 	"github.com/DMV-Petri-Dish/crypto/app/services/node/handlers"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/database"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/genesis"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/state"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/storage/disk"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/worker"
 	"github.com/DMV-Petri-Dish/crypto/foundation/events"
 	"github.com/DMV-Petri-Dish/crypto/foundation/logger"
 	"github.com/DMV-Petri-Dish/crypto/foundation/nameservice"
@@ -49,6 +52,9 @@ func run(log *zap.SugaredLogger) error {
 	// =================================
 	// Configuration
 
+	// This is all the configuration for the application and the default values.
+	// Configuration values will be passed through the application as individual
+	// values.
 	cfg := struct {
 		conf.Version
 		Web struct {
@@ -60,8 +66,8 @@ func run(log *zap.SugaredLogger) error {
 			PublicHost      string        `conf:"default:0.0.0.0:8080"`
 			PrivateHost     string        `conf:"default:0.0.0.0:9080"`
 		}
-		Node struct {
-			MinerName      string   `conf:"default:miner1"`
+		State struct {
+			Beneficiary    string   `conf:"default:miner1"`
 			DBPath         string   `conf:"default:zblock/blocks.db`
 			SelectStrategy string   `conf:"default:Tip"`
 			OriginPeers    []string `conf:"default:0.0.0.0:9080"`
@@ -76,6 +82,8 @@ func run(log *zap.SugaredLogger) error {
 		},
 	}
 
+	// Parse will set the defaults and then look for any overriding values
+	// in environment variables and command line flags.
 	const prefix = "DMVPTD"
 	help, err := conf.Parse(prefix, &cfg)
 	if err != nil {
@@ -92,6 +100,7 @@ func run(log *zap.SugaredLogger) error {
 	log.Infow("starting service", "version", build)
 	defer log.Infow("shutdown complete")
 
+	// Display the current configuration to the logs.
 	out, err := conf.String(&cfg)
 	if err != nil {
 		return fmt.Errorf("generating config for output: %w", err)
@@ -101,11 +110,14 @@ func run(log *zap.SugaredLogger) error {
 	// =================================
 	// Name Service Support
 
+	// The nameservice package provides name resolution for account addresses.
+	// The names come from the file names in the zblock/accounts folder.
 	ns, err := nameservice.New(cfg.NameService.Folder)
 	if err != nil {
 		return fmt.Errorf("unable to load account name service: %w", err)
 	}
 
+	// Logging the accounts for documentation in the logs.
 	for account, name := range ns.Copy() {
 		log.Infow("startup", "status", "nameservice", "name", name, "account", account)
 	}
@@ -115,7 +127,7 @@ func run(log *zap.SugaredLogger) error {
 
 	// Need to load the private key file for the configured beneficiary so the
 	// account can get credited with fees and tips.
-	path := fmt.Sprintf("%s%s.ecdsa", cfg.NameService.Folder, cfg.Node.MinerName)
+	path := fmt.Sprintf("%s%s.ecdsa", cfg.NameService.Folder, cfg.State.Beneficiary)
 	privateKey, err := crypto.LoadECDSA(path)
 	if err != nil {
 		return fmt.Errorf("unable to load private key for node: %w", err)
@@ -124,7 +136,7 @@ func run(log *zap.SugaredLogger) error {
 	// A peer set is a collection of known nodes in the network so transactions
 	// and blocks can be shared.
 	peerSet := peer.NewPeerSet()
-	for _, host := range cfg.Node.OriginPeers {
+	for _, host := range cfg.State.OriginPeers {
 		peerSet.Add(peer.New(host))
 	}
 
@@ -132,7 +144,7 @@ func run(log *zap.SugaredLogger) error {
 	// application to log. For now, these raw messages are sent to any websocket
 	// client that is connected into the system through the events package.
 	evts := events.New()
-	ev := func(v string, args ...interface{}) {
+	ev := func(v string, args ...any) {
 		const websocketPrefix = "viewer:"
 
 		s := fmt.Sprintf(v, args...)
@@ -143,11 +155,24 @@ func run(log *zap.SugaredLogger) error {
 		}
 	}
 
+	// Construct the use of disk storage.
+	storage, err := disk.New(cfg.State.DBPath)
+	if err != nil {
+		return err
+	}
+
+	// Load the genesis file for blockchain settings and origin balances.
+	genesis, err := genesis.Load()
+	if err != nil {
+		return err
+	}
+
 	state, err := state.New(state.Config{
 		BeneficiaryID:  database.PublicKeyToAccountID(privateKey.PublicKey),
 		Host:           cfg.Web.PrivateHost,
-		DBPath:         cfg.Node.DBPath,
-		SelectStrategy: cfg.Node.SelectStrategy,
+		Storage:        storage,
+		Genesis:        genesis,
+		SelectStrategy: cfg.State.SelectStrategy,
 		KnownPeers:     peerSet,
 		EvHandler:      ev,
 	})
@@ -155,6 +180,11 @@ func run(log *zap.SugaredLogger) error {
 		return err
 	}
 	defer state.Shutdown()
+
+	// The worker package implements the different workflows such as mining,
+	// transaction peer sharing, and peer updates. The worker will register
+	// itself with the state.
+	worker.Run(state, ev)
 
 	// =================================
 	// Start Debug Service
@@ -198,6 +228,7 @@ func run(log *zap.SugaredLogger) error {
 		Log:      log,
 		State:    state,
 		NS:       ns,
+		Evts:     evts,
 	})
 
 	// Construct a server to service the requests against the mux.

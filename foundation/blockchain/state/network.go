@@ -1,7 +1,13 @@
 package state
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/database"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
 
 	"fmt"
 	"net/http"
@@ -88,4 +94,115 @@ func (s *State) NetRequestPeerStatus(pr peer.Peer) (peer.PeerStatus, error) {
 	s.evHandler("state: NetRequestPeerStatus: peer-node[%s]: latest-blknum[%d]: peer-list[%s]", pr, ps.LatestBlockNumber, ps.KnownPeers)
 
 	return ps, nil
+}
+
+// NetRequestPeerMempool asks the peer for the transactions in their mempool.
+func (s *State) NetRequestPeerMempool(pr peer.Peer) ([]database.BlockTx, error) {
+	s.evHandler("state: NetRequestPeerMempool: started: %s", pr)
+	defer s.evHandler("state: NetRequestPeerMempool: completed: %s", pr)
+
+	url := fmt.Sprintf("%s/tx/list", fmt.Sprintf(baseURL, pr.Host))
+
+	var mempool []database.BlockTx
+	if err := send(http.MethodGet, url, nil, &mempool); err != nil {
+		return nil, err
+	}
+
+	s.evHandler("state: NetRequestPeerMempool: len[%d]", len(mempool))
+
+	return mempool, nil
+}
+
+// NetRequestPeerBlocks queries the specified node asking for blocks this node does
+// not have, then writes them to disk.
+func (s *State) NetRequestPeerBlocks(pr peer.Peer) error {
+	s.evHandler("state: NetRequestPeerBlocks: started: %s", pr)
+	defer s.evHandler("state: NetRequestPeerBlocks: completed: %s", pr)
+
+	// CORE NOTE: Ideally you want to start by pulling just block headers and
+	// performing the cryptographic audit so you know your're not being attacked.
+	// After that you can start pulling the full block data for each block header
+	// if you are a full node and maybe only the last 1000 full blocks if you
+	// are a pruned node. That can be done in the background. Remember, you
+	// only need block headers to validate new blocks.
+
+	// Currently the Ardan blockchain is a full node only system and needs the
+	// transactions to have a complete account database. The cryptographic audit
+	// does take place as each full block is downloaded from peers.
+
+	from := s.RetrieveLatestBlock().Header.Number + 1
+	url := fmt.Sprintf("%s/block/list/%d/latest", fmt.Sprintf(baseURL, pr.Host), from)
+
+	var blocksData []database.BlockData
+	if err := send(http.MethodGet, url, nil, &blocksData); err != nil {
+		return err
+	}
+
+	s.evHandler("state: NetRequestPeerBlocks: found blocks[%d]", len(blocksData))
+
+	for _, blockData := range blocksData {
+		block, err := database.ToBlock(blockData)
+		if err != nil {
+			return err
+		}
+
+		if err := s.ProcessProposedBlock(block); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// =============================================================================
+
+// send is a helper function to send an HTTP request to a node.
+func send(method string, url string, dataSend any, dataRecv any) error {
+	var req *http.Request
+
+	switch {
+	case dataSend != nil:
+		data, err := json.Marshal(dataSend)
+		if err != nil {
+			return err
+		}
+		req, err = http.NewRequest(method, url, bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+
+	default:
+		var err error
+		req, err = http.NewRequest(method, url, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	var client http.Client
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		msg, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		return errors.New(string(msg))
+	}
+
+	if dataRecv != nil {
+		if err := json.NewDecoder(resp.Body).Decode(dataRecv); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

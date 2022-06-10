@@ -9,7 +9,6 @@ import (
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/genesis"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/mempool"
 	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
-	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/storage/disk"
 )
 
 // EventHandler defines a function that is called when events
@@ -22,7 +21,7 @@ type Worker interface {
 	Shutdown()
 	Sync()
 	SignalStartMining()
-	SignalCancelMining(done func())
+	SignalCancelMining()
 	SignalShareTx(blockTx database.BlockTx)
 }
 
@@ -33,7 +32,8 @@ type Worker interface {
 type Config struct {
 	BeneficiaryID  database.AccountID
 	Host           string
-	DBPath         string
+	Storage        database.Storage
+	Genesis        genesis.Genesis
 	SelectStrategy string
 	KnownPeers     *peer.PeerSet
 	EvHandler      EventHandler
@@ -41,17 +41,16 @@ type Config struct {
 
 // State manages the blockchain database.
 type State struct {
-	mu sync.RWMutex
+	mu          sync.RWMutex
+	resyncWG    sync.WaitGroup
+	allowMining bool
 
 	beneficiaryID database.AccountID
 	host          string
-	dbPath        string
 	evHandler     EventHandler
 
-	allowMining bool
-	resyncWG    sync.WaitGroup
-
 	knownPeers *peer.PeerSet
+	storage    database.Storage
 	genesis    genesis.Genesis
 	mempool    *mempool.Mempool
 	db         *database.Database
@@ -69,21 +68,8 @@ func New(cfg Config) (*State, error) {
 		}
 	}
 
-	// Load the genesis file to get starting balances for
-	// founders of the block chain.
-	genesis, err := genesis.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	storage, err := disk.New(cfg.DBPath)
-	//storage, err := memory.New()
-	if err != nil {
-		return nil, err
-	}
-
 	// Access the storage for the blockchain.
-	db, err := database.New(genesis, storage, ev)
+	db, err := database.New(cfg.Genesis, cfg.Storage, ev)
 	if err != nil {
 		return nil, err
 	}
@@ -98,12 +84,12 @@ func New(cfg Config) (*State, error) {
 	state := State{
 		beneficiaryID: cfg.BeneficiaryID,
 		host:          cfg.Host,
-		dbPath:        cfg.DBPath,
+		storage:       cfg.Storage,
 		evHandler:     ev,
 		allowMining:   true,
 
 		knownPeers: cfg.KnownPeers,
-		genesis:    genesis,
+		genesis:    cfg.Genesis,
 		mempool:    mempool,
 		db:         db,
 	}

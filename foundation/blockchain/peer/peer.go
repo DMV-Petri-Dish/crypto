@@ -67,3 +67,18 @@ func (ps *PeerSet) Remove(peer Peer) {
 
 	delete(ps.set, peer)
 }
+
+// Copy returns a list of the known peers.
+func (ps *PeerSet) Copy(host string) []Peer {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+
+	var peers []Peer
+	for peer := range ps.set {
+		if !peer.Match(host) {
+			peers = append(peers, peer)
+		}
+	}
+
+	return peers
+}

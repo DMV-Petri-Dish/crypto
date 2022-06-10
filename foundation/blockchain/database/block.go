@@ -1,6 +1,9 @@
 package database
 
-import "errors"
+import (
+	"errors"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/merkle"
+)
 
 // ErrChainForked is returned from validateNextBlock if another node's chain
 // is tow or more blocks ahead of ours.
