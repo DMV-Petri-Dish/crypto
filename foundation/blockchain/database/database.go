@@ -73,7 +73,7 @@ func New(genesis genesis.Genesis, storage Storage, evHandler func(v string, args
 		for _, tx := range block.MerkleTree.Values() {
 			db.ApplyTransaction(block, tx)
 		}
-		db.ApplyMiningAward(block)
+		db.ApplyMiningReward(block)
 
 		// Update the current latest block
 		db.latestBlock = block

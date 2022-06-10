@@ -1,6 +1,9 @@
 package state
 
-import "github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
+import (
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/database"
+	"github.com/DMV-Petri-Dish/crypto/foundation/blockchain/peer"
+)
 
 // AddKnownPeer provides the ability to add a new peer to the known peer list
 func (s *State) AddKnownPeer(peer peer.Peer) bool {
@@ -11,4 +14,9 @@ func (s *State) AddKnownPeer(peer peer.Peer) bool {
 // the known peer list.
 func (s *State) RemoveKnownPeer(peer peer.Peer) {
 	s.knownPeers.Remove(peer)
+}
+
+// UpsertMempool adds a new transaction to the mempool.
+func (s *State) UpsertMempool(tx database.BlockTx) error {
+	return s.mempool.Upsert(tx)
 }
